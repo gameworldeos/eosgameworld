@@ -14,7 +14,7 @@ const uint32_t gap = 24 * 60 * 60;
 const uint32_t gap_delta = 30;
 const uint64_t base = 1000ll * 1000;
 const account_name contract_fee_account = N(gameworldfee);
-const uint64_t key_precision = 10000;
+const uint64_t key_precision = 100;
 const uint8_t RED = 0;
 const uint8_t BLUE = 1;
 const uint8_t PROFITSPLIT[2] = {60, 30};
@@ -28,6 +28,7 @@ public:
     {};
     void transfer(account_name from, account_name to, asset quantity, string memo);
     void withdraw(account_name to);
+    void create(time_point_sec start);
 private:
 
     // @abi table round i64
@@ -44,6 +45,7 @@ private:
         uint64_t mask;
         uint64_t redmask;
         uint64_t bluemask;
+        time_point_sec start;
     };
     typedef singleton<N(round), st_round> tb_round;
     tb_round sgt_round;
@@ -70,19 +72,8 @@ private:
         return key_precision * (sqrt(eos * 1280000 + 230399520000) - 479999);
     }
     st_round get_round() {
-        st_round round = st_round{
-            .eos = 0,
-            .pot = 0,
-            .mask = 0,
-            .key = 0,
-            .red = 0,
-            .blue = 0,
-            .end = time_point_sec(now() + gap),
-            .ended = false,
-            .player = _self,
-            .team = 0,
-        };
-        return sgt_round.get_or_create(_self, round);
+        eosio_assert(sgt_round.exists(), "round not exist");
+        return sgt_round.get();
     }
 };
 
@@ -104,4 +95,4 @@ extern "C" { \
     } \
 } \
 
-EOSIO_ABI_EX(gameworldcom, (withdraw) (transfer))
+EOSIO_ABI_EX(gameworldcom, (withdraw) (transfer) (create))

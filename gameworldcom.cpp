@@ -39,7 +39,8 @@ void gameworldcom::transfer(account_name from, account_name to, asset quantity, 
     uint8_t team = (team_str == "red") ? RED : BLUE;
 
     st_round round = get_round();
-    eosio_assert(time_point_sec(now()) < round.end, "this round is ended");
+    eosio_assert((time_point_sec(now()) < round.end) && !round.ended, "this round is ended");
+    eosio_assert(time_point_sec(now()) > round.start, "this round is not started");
 
     // cal fee
     uint64_t contract_fee = 2 * quantity.amount / 100;
@@ -60,7 +61,10 @@ void gameworldcom::transfer(account_name from, account_name to, asset quantity, 
     st_player player = players.get_or_create(from, default_player);
 
     uint64_t keys = buy_keys(quantity.amount);
-    eosio_assert(keys >= key_precision * 100, "amount of key should be bigger than 100");
+
+    uint64_t min_key_to_buy = max(round.key / 10000, key_precision * 100);
+    eosio_assert(keys >= min_key_to_buy, "amount of key should be bigger than 100 and one ten thousandths of keys in this round");
+
     player.eos += quantity.amount;
     player.key += keys;
 
@@ -150,6 +154,15 @@ void gameworldcom::withdraw(account_name to) {
         st_player winner = sgt_winner.get();
         winner.pot_vault += win;
         sgt_winner.set(winner, round.player);
+
+        // contract fee
+        asset contract_fee_asset(contract_fee, S(4,EOS));
+        action(
+                permission_level{ _self, N(active) },
+                N(eosio.token),
+                N(transfer),
+                make_tuple(_self, contract_fee_account, contract_fee_asset, string(""))
+        ).send();
     }
 
     // cal profit
@@ -182,4 +195,25 @@ void gameworldcom::withdraw(account_name to) {
                 make_tuple(_self, to, vault_asset, string("gameworldcom withdraw"))
         ).send();
     }
+}
+
+void gameworldcom::create(time_point_sec start) {
+    require_auth(_self);
+    eosio_assert(time_point_sec(now()) < start, "invalid start time");
+    eosio_assert(!sgt_round.exists() || (sgt_round.get().end < time_point_sec(now())), "not the time to create new round");
+
+    st_round round = st_round{
+            .eos = 0,
+            .pot = 0,
+            .mask = 0,
+            .key = 0,
+            .red = 0,
+            .blue = 0,
+            .end = time_point_sec(start + gap),
+            .ended = false,
+            .player = _self,
+            .team = 0,
+            .start = start,
+    };
+    sgt_round.set(round, _self);
 }
